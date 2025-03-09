@@ -1,0 +1,40 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# Local development
+.env
+.env.local
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Media files
+*.pdf
+*.mp4
+*.mp3
+*.wav
+*.avi
+*.mkv
+*.webm
+*.gif
+*.ogg
+*.flac
+*.m4a
+*.aac
