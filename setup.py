@@ -10,12 +10,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="richcli",
     version="0.1.0",
-    author="You",
-    author_email="you@example.com",
-    description="Terminal User Interface tools for media manipulation",
+    author="Apoorva Lal",
+    author_email="lal.apoorva@gmail.com",
+    description="Terminal User Interface tools for media operations",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/richcli",
+    url="https://github.com/apoorvalal/richcli",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
