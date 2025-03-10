@@ -26,6 +26,7 @@ ENV/
 htmlcov/
 
 # Media files
+tmp/*
 *.pdf
 *.mp4
 *.mp3

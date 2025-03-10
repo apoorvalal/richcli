@@ -36,7 +36,7 @@ class MainUI(BaseUI):
         """Display the main menu and get user selection."""
         self.clear_screen()
         self.display_header(
-            "RichCLI", "Terminal User Interface tools for media manipulation"
+            "RichCLI", "Terminal User Interface tools for building CLI calls"
         )
 
         table = Table(box=box.SIMPLE)
@@ -129,7 +129,7 @@ def main() -> None:
                 print("       cat COMMAND_HELP | richcli magnet COMMAND_NAME")
                 return
         elif arg in ["-h", "--help"]:
-            print("RichCLI - Terminal User Interface tools for media manipulation")
+            print("RichCLI - Terminal User Interface tools for CLI calls")
             print("\nUsage:")
             print("  richcli           - Launch the main UI")
             print("  richcli pdf       - Launch PDF Tools directly")
