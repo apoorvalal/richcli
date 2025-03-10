@@ -1,6 +1,6 @@
 # `richcli`: user-friendly terminal interfaces
 
-User-friendly Terminal User Interfaces (TUI) for venerable but intimidating unix tools (`ffmpeg, pdftk`), built with the [rich](https://rich.readthedocs.io/en/stable/introduction.html) python library for modern terminal interfaces.
+User-friendly Terminal User Interfaces (TUI) for venerable but intimidating unix tools (`ffmpeg, pdftk`), built with the [rich](https://rich.readthedocs.io/en/stable/introduction.html) python library for modern terminal interfaces. Interactively stitches together a command (say, `ffmpeg -i input.mp3 -ss 00:00:10 -to 00:01:00`) that you can then run, or use as a learning tool.
 
 Remembering the flags and positional arguments for pdftk or ffmpeg commands is challenging and error-prone but they can also basically do most things you might want, so I built this CLI (ably assistant by claude) to make it easier to perform common operations. It also includes a generic CLI builder that can be used to build up any command line call interactively; this functionality is demoed below with pandoc.
 
