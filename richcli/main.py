@@ -23,7 +23,11 @@ class MainUI(BaseUI):
     def __init__(self):
         super().__init__()
         self.tools = {
-            "1": ("PDF Tools", PDFToolsUI, "Manipulate PDF files with pdftk and ghostscript"),
+            "1": (
+                "PDF Tools",
+                PDFToolsUI,
+                "Manipulate PDF files with pdftk and ghostscript",
+            ),
             "2": ("FFmpeg UI", FFmpegUI, "Convert media files with FFmpeg"),
             "q": ("Quit", None, "Exit the application"),
         }
@@ -31,7 +35,9 @@ class MainUI(BaseUI):
     def display_main_menu(self) -> str:
         """Display the main menu and get user selection."""
         self.clear_screen()
-        self.display_header("RichCLI", "Terminal User Interface tools for media manipulation")
+        self.display_header(
+            "RichCLI", "Terminal User Interface tools for media manipulation"
+        )
 
         table = Table(box=box.SIMPLE)
         table.add_column("Option", style="cyan")
@@ -44,9 +50,10 @@ class MainUI(BaseUI):
         self.console.print(table)
 
         choice = Prompt.ask(
-            "Select a tool", console=self.console, 
+            "Select a tool",
+            console=self.console,
             choices=list(self.tools.keys()),
-            default="1"
+            default="1",
         )
 
         return choice
@@ -55,28 +62,31 @@ class MainUI(BaseUI):
         """Run the main UI."""
         while True:
             choice = self.display_main_menu()
-            
+
             if choice.lower() == "q":
                 self.console.print("[bold]Exiting RichCLI. Goodbye![/bold]")
                 break
-                
+
             name, tool_class, _ = self.tools[choice]
-            
+
             try:
                 tool = tool_class()
-                
+
                 if hasattr(tool, "main_menu"):
                     tool.main_menu()
                 elif hasattr(tool, "run"):
                     tool.run()
                 else:
-                    self.console.print(f"[red]Error: {name} does not have a run method.[/red]")
-                    
+                    self.console.print(
+                        f"[red]Error: {name} does not have a run method.[/red]"
+                    )
+
             except KeyboardInterrupt:
                 self.console.print(f"\n[yellow]Exiting {name}[/yellow]")
             except Exception as e:
                 self.console.print(f"[red]Error in {name}: {str(e)}[/red]")
                 import traceback
+
                 traceback.print_exc()
 
 
@@ -85,7 +95,7 @@ def main() -> None:
     # Handle command line arguments
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
-        
+
         # Direct tool launch
         if arg == "pdf":
             PDFToolsUI().main_menu()
@@ -93,6 +103,31 @@ def main() -> None:
         elif arg == "ffmpeg":
             FFmpegUI().run()
             return
+        elif arg == "magnet":
+            # Check for additional arguments
+            if len(sys.argv) > 2:
+                from .cli.magnet import run_magnet
+
+                command_name = sys.argv[2]
+
+                # Check if we have input from stdin
+                help_text = None
+                if not sys.stdin.isatty():
+                    help_text = sys.stdin.read()
+                    # Reset stdin for later input if possible
+                    try:
+                        # This won't work on all platforms, but it's worth a try
+                        sys.stdin = open("/dev/tty")
+                    except:
+                        # If we can't reopen stdin, we'll handle it in the magnet UI
+                        pass
+
+                run_magnet(command_name, help_text)
+                return
+            else:
+                print("Usage: richcli magnet COMMAND_NAME")
+                print("       cat COMMAND_HELP | richcli magnet COMMAND_NAME")
+                return
         elif arg in ["-h", "--help"]:
             print("RichCLI - Terminal User Interface tools for media manipulation")
             print("\nUsage:")
@@ -104,13 +139,14 @@ def main() -> None:
             return
         elif arg in ["-v", "--version"]:
             from . import __version__
+
             print(f"RichCLI version {__version__}")
             return
         else:
             print(f"Unknown command: {arg}")
             print("Run 'richcli --help' for usage information")
             return
-    
+
     # Launch main UI
     try:
         ui = MainUI()
@@ -120,6 +156,7 @@ def main() -> None:
     except Exception as e:
         print(f"Error: {str(e)}")
         import traceback
+
         traceback.print_exc()
 
 
