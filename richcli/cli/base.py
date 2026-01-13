@@ -3,7 +3,7 @@ Base class for RichCLI applications
 """
 
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from rich import box
 from rich.console import Console
@@ -11,6 +11,14 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
+
+
+class NavigationAction(Exception):
+    """Signal user navigation (back or exit) during interactive prompts."""
+
+    def __init__(self, action: str):
+        super().__init__(action)
+        self.action = action
 
 
 class BaseUI:
@@ -25,6 +33,23 @@ class BaseUI:
     def clear_screen(self) -> None:
         """Clear the terminal screen."""
         os.system("cls" if os.name == "nt" else "clear")
+
+    def check_navigation(self, value: str) -> Optional[str]:
+        """Return navigation action if user typed back/exit."""
+        if not isinstance(value, str):
+            return None
+        normalized = value.strip().lower()
+        if normalized in {"b", "back"}:
+            return "back"
+        if normalized in {"q", "quit", "exit"}:
+            return "exit"
+        return None
+
+    def raise_if_navigation(self, value: str) -> None:
+        """Raise NavigationAction if value requests back/exit."""
+        action = self.check_navigation(value)
+        if action:
+            raise NavigationAction(action)
 
     def display_header(self, title: str, subtitle: str = "") -> None:
         """Display the application header.
@@ -116,9 +141,15 @@ class BaseUI:
             self.console.print(table)
 
             choice = Prompt.ask(
-                "[bold cyan]Enter file/directory name, '..' for parent, or full path[/bold cyan]",
+                "[bold cyan]Enter file/directory name, '..' for parent, 'b' to go back, or full path[/bold cyan]",
                 default="..",
             )
+
+            action = self.check_navigation(choice)
+            if action == "exit":
+                raise NavigationAction("exit")
+            if action == "back":
+                return None
 
             if choice == "..":
                 current_dir = os.path.dirname(current_dir)

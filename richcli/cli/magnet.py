@@ -6,15 +6,12 @@ import os
 import re
 import subprocess
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from rich import box
-from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
-from rich.text import Text
 
-from .base import BaseUI
+from .base import BaseUI, NavigationAction
 
 
 class MagnetUI(BaseUI):
@@ -48,6 +45,23 @@ class MagnetUI(BaseUI):
     def _parse_help_text(self, help_text: str) -> List[Dict]:
         """Parse CLI help text to extract options and arguments."""
         options = []
+        seen = set()
+
+        def add_option(short_opt: Optional[str], long_opt: Optional[str], arg_name: Optional[str], description: str) -> None:
+            """Add an option if it has not already been recorded."""
+            key = (short_opt or "", long_opt or "")
+            if key in seen:
+                return
+            seen.add(key)
+            options.append(
+                {
+                    "short": short_opt,
+                    "long": long_opt,
+                    "arg_name": arg_name,
+                    "description": description.strip(),
+                    "requires_value": arg_name is not None,
+                }
+            )
 
         # Common patterns for option descriptions in help text
         patterns = [
@@ -67,27 +81,39 @@ class MagnetUI(BaseUI):
 
                     if len(groups) == 4:  # First pattern with short and long options
                         short_opt, long_opt, arg_name, description = groups
-                        options.append(
-                            {
-                                "short": short_opt,
-                                "long": long_opt,
-                                "arg_name": arg_name,
-                                "description": description.strip(),
-                                "requires_value": arg_name is not None,
-                            }
-                        )
+                        add_option(short_opt, long_opt, arg_name, description)
                     elif len(groups) == 3:  # Second pattern with only long option
                         long_opt, arg_name, description = groups
-                        options.append(
-                            {
-                                "short": None,
-                                "long": long_opt,
-                                "arg_name": arg_name,
-                                "description": description.strip(),
-                                "requires_value": arg_name is not None,
-                            }
-                        )
+                        add_option(None, long_opt, arg_name, description)
                     break
+
+        if options:
+            return options
+
+        # Fallback parsing for usage-style bracketed options (e.g., ssh)
+        bracket_tokens = re.findall(r"\[([^\]]+)\]", help_text)
+        for token in bracket_tokens:
+            token = token.strip()
+            if not token or token.lower().startswith("usage"):
+                continue
+
+            # Tokens like [-46AaCf] bundle multiple short flags without arguments
+            if token.startswith("-") and " " not in token and len(token) > 2:
+                packed_flags = token[1:]
+                for flag_char in packed_flags:
+                    short_opt = f"-{flag_char}"
+                    add_option(short_opt, None, None, "Option flag")
+                continue
+
+            parts = token.split()
+            if not parts:
+                continue
+
+            if parts[0].startswith("-"):
+                short_opt = parts[0]
+                arg_name = parts[1] if len(parts) > 1 else None
+                desc = " ".join(parts[1:]) if len(parts) > 1 else "Option flag"
+                add_option(short_opt, None, arg_name, desc)
 
         return options
 
@@ -303,8 +329,17 @@ if __name__ == "__main__":
             self.console.print("1. Add a flag/option")
             self.console.print("2. Add a positional argument (file, text, etc.)")
             self.console.print("3. Finish building command")
+            self.console.print("[dim]Type 'b' to go back or 'q' to exit[/dim]")
 
-            next_step = Prompt.ask("Select", choices=["1", "2", "3"], default="1")
+            next_step = Prompt.ask(
+                "Select", choices=["1", "2", "3", "b", "q"], default="1"
+            )
+
+            action = self.check_navigation(next_step)
+            if action == "exit":
+                return
+            if action == "back":
+                return
 
             if next_step == "3":
                 break
@@ -327,7 +362,16 @@ if __name__ == "__main__":
                 self.console.print(table)
 
                 # Get user choice
-                choice = Prompt.ask("Select option by number", default="1")
+                choice = Prompt.ask(
+                    "Select option by number (or 'b' to go back, 'q' to exit)",
+                    default="1",
+                )
+
+                action = self.check_navigation(choice)
+                if action == "exit":
+                    return
+                if action == "back":
+                    continue
 
                 try:
                     choice_idx = int(choice) - 1
@@ -336,7 +380,14 @@ if __name__ == "__main__":
 
                         # Add option to command
                         if opt["requires_value"]:
-                            value = Prompt.ask(f"Value for {opt['arg_name']}")
+                            value = Prompt.ask(
+                                f"Value for {opt['arg_name']} (or 'b' to go back, 'q' to exit)"
+                            )
+                            action = self.check_navigation(value)
+                            if action == "exit":
+                                return
+                            if action == "back":
+                                continue
                             command.append(opt["long"] if opt["long"] else opt["short"])
                             command.append(value)
                         else:
@@ -352,12 +403,24 @@ if __name__ == "__main__":
                 self.console.print(
                     "[yellow]For files, you can type 'browse' to use the file browser.[/yellow]"
                 )
+                self.console.print("[dim]Type 'b' to go back or 'q' to exit[/dim]")
 
                 argument = Prompt.ask("Argument")
 
+                action = self.check_navigation(argument)
+                if action == "exit":
+                    return
+                if action == "back":
+                    continue
+
                 if argument.lower() == "browse":
                     # Use the file browser from BaseUI
-                    file_path = self.browse_files()
+                    try:
+                        file_path = self.browse_files()
+                    except NavigationAction as nav:
+                        if nav.action == "exit":
+                            return
+                        continue
                     if file_path:
                         command.append(file_path)
                         self.console.print(f"[green]Added: {file_path}[/green]")
@@ -402,6 +465,11 @@ def run_magnet(command_name, help_text=None):
     try:
         ui = MagnetUI(command_name, help_text)
         ui.interactive_ui_builder()
+    except NavigationAction as nav:
+        if nav.action == "exit":
+            print("\nExited magnet mode.")
+        else:
+            print("\nReturning to previous menu.")
     except KeyboardInterrupt:
         print("\nExiting. Goodbye!")
     except EOFError:

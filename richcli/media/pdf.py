@@ -5,15 +5,14 @@ PDF Tools - A terminal UI for pdftk and ghostscript operations
 import os
 import subprocess
 import tempfile
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple
 
 from rich import box
 from rich.panel import Panel
-from rich.prompt import Confirm, IntPrompt, Prompt
+from rich.prompt import Prompt
 from rich.table import Table
-from rich.text import Text
 
-from ..cli.base import BaseUI
+from ..cli.base import BaseUI, NavigationAction
 
 
 class PDFToolsUI(BaseUI):
@@ -46,13 +45,15 @@ class PDFToolsUI(BaseUI):
         # Use file browser from base class
         if self.pdf_files:
             file = self.browse_files(extensions=[".pdf"])
+            if not file:
+                raise NavigationAction("back")
             self.current_pdf = os.path.basename(file)
             return self.current_pdf
-        else:
-            self.console.print(
-                "[yellow]No PDF files found in the current directory.[/yellow]"
-            )
-            return None
+
+        self.console.print(
+            "[yellow]No PDF files found in the current directory.[/yellow]"
+        )
+        return None
 
     def main_menu(self) -> None:
         """Display the main menu and handle user selection."""
@@ -69,37 +70,43 @@ class PDFToolsUI(BaseUI):
         }
 
         while True:
-            self.clear_screen()
-            self.display_header("PDF Tools", "Terminal UI for pdftk and ghostscript")
+            try:
+                self.clear_screen()
+                self.display_header("PDF Tools", "Terminal UI for pdftk and ghostscript")
 
-            if self.current_pdf:
-                self.console.print(
-                    f"[bold green]Current PDF:[/bold green] {self.current_pdf}"
-                )
+                if self.current_pdf:
+                    self.console.print(
+                        f"[bold green]Current PDF:[/bold green] {self.current_pdf}"
+                    )
 
-            choice = self.display_menu(choices)
+                choice = self.display_menu(choices)
 
-            if choice == "9":
-                break
+                if choice == "9":
+                    break
 
-            description, func = choices[choice]
+                description, func = choices[choice]
 
-            # If user selects an operation but hasn't selected a file yet,
-            # prompt to select a file first unless the operation is "Merge PDFs"
-            if choice not in ["1", "3", "8", "9"] and not self.current_pdf:
-                self.console.print("[yellow]Please select a PDF file first.[/yellow]")
-                self.select_file()
-                if not self.current_pdf:  # If user still hasn't selected a file
-                    continue
+                # If user selects an operation but hasn't selected a file yet,
+                # prompt to select a file first unless the operation is "Merge PDFs"
+                if choice not in ["1", "3", "8", "9"] and not self.current_pdf:
+                    self.console.print("[yellow]Please select a PDF file first.[/yellow]")
+                    self.select_file()
+                    if not self.current_pdf:  # If user still hasn't selected a file
+                        continue
 
-            result = func()
+                result = func()
 
-            if choice == "1" and result:
-                self.console.print(f"[green]Selected:[/green] {result}")
+                if choice == "1" and result:
+                    self.console.print(f"[green]Selected:[/green] {result}")
 
-            # Pause to let user read any messages
-            if choice != "1":
-                Prompt.ask("\nPress Enter to continue")
+                # Pause to let user read any messages
+                if choice != "1":
+                    Prompt.ask("\nPress Enter to continue")
+            except NavigationAction as nav:
+                if nav.action == "exit":
+                    self.console.print("[yellow]Exiting PDF Tools.[/yellow]")
+                    break
+                self.console.print("[yellow]Returning to PDF menu.[/yellow]")
 
     def extract_pages_menu(self) -> None:
         """Menu for extracting pages from a PDF."""
@@ -110,10 +117,12 @@ class PDFToolsUI(BaseUI):
         output_file = Prompt.ask(
             "Output filename", default=f"extract_{self.current_pdf}"
         )
+        self.raise_if_navigation(output_file)
 
         page_range = Prompt.ask(
             "Page range (e.g., 1-5 or 1,3,5 or 1-5,7,9-11)", default="1-end"
         )
+        self.raise_if_navigation(page_range)
 
         # Build the pdftk command
         command = f"pdftk '{self.current_pdf}' cat {page_range} output '{output_file}'"
@@ -149,6 +158,7 @@ class PDFToolsUI(BaseUI):
             "Select files to merge (numbers separated by commas)",
             default=",".join(str(i) for i in range(1, len(self.pdf_files) + 1)),
         )
+        self.raise_if_navigation(selected_indices)
 
         try:
             indices = [int(idx.strip()) for idx in selected_indices.split(",")]
@@ -164,6 +174,7 @@ class PDFToolsUI(BaseUI):
             return
 
         output_file = Prompt.ask("Output filename", default="merged.pdf")
+        self.raise_if_navigation(output_file)
 
         # Build the pdftk command
         file_args = " ".join([f"'{f}'" for f in selected_files])
@@ -182,6 +193,7 @@ class PDFToolsUI(BaseUI):
         output_file = Prompt.ask(
             "Output filename", default=f"compressed_{self.current_pdf}"
         )
+        self.raise_if_navigation(output_file)
 
         # Ask for quality level
         quality_options = {
@@ -206,8 +218,13 @@ class PDFToolsUI(BaseUI):
         self.console.print(table)
 
         quality = Prompt.ask(
-            "Select quality level", choices=list(quality_options.keys()), default="2"
+            "Select quality level (b to go back, q to exit)",
+            choices=list(quality_options.keys()) + ["b", "q"],
+            default="2",
         )
+        action = self.check_navigation(quality)
+        if action:
+            raise NavigationAction(action)
 
         # Build the Ghostscript command
         quality_name, quality_setting = quality_options[quality]
@@ -240,10 +257,12 @@ class PDFToolsUI(BaseUI):
         output_file = Prompt.ask(
             "Output filename", default=f"rotated_{self.current_pdf}"
         )
+        self.raise_if_navigation(output_file)
 
         page_range = Prompt.ask(
             "Page range (e.g., 1-5 or 1,3,5 or 1-5,7,9-11)", default="1-end"
         )
+        self.raise_if_navigation(page_range)
 
         rotation_options = {
             "1": "north",  # No rotation
@@ -265,8 +284,13 @@ class PDFToolsUI(BaseUI):
         self.console.print(table)
 
         rotation = Prompt.ask(
-            "Select rotation", choices=list(rotation_options.keys()), default="2"
+            "Select rotation (b to go back, q to exit)",
+            choices=list(rotation_options.keys()) + ["b", "q"],
+            default="2",
         )
+        action = self.check_navigation(rotation)
+        if action:
+            raise NavigationAction(action)
 
         rotation_value = rotation_options[rotation]
 
@@ -288,6 +312,7 @@ class PDFToolsUI(BaseUI):
         output_file = Prompt.ask(
             "Output filename", default=f"numbered_{self.current_pdf}"
         )
+        self.raise_if_navigation(output_file)
 
         # This is more complex and requires multiple steps:
         # 1. Create a temporary PostScript file with page numbers
@@ -312,14 +337,27 @@ class PDFToolsUI(BaseUI):
         self.console.print(table)
 
         position = Prompt.ask(
-            "Select page number position",
-            choices=list(position_options.keys()),
+            "Select page number position (b to go back, q to exit)",
+            choices=list(position_options.keys()) + ["b", "q"],
             default="1",
         )
+        action = self.check_navigation(position)
+        if action:
+            raise NavigationAction(action)
 
         pos_name, halign, vpos = position_options[position]
 
-        start_num = IntPrompt.ask("Starting page number", default=1)
+        start_value = Prompt.ask(
+            "Starting page number (b to go back, q to exit)", default="1"
+        )
+        action = self.check_navigation(start_value)
+        if action:
+            raise NavigationAction(action)
+        try:
+            start_num = int(start_value)
+        except ValueError:
+            self.console.print("[red]Please enter a valid starting number.[/red]")
+            return
 
         # Create a temporary directory for the intermediate files
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -383,22 +421,28 @@ class PDFToolsUI(BaseUI):
             self.console.print(f"[cyan]{key}[/cyan]: {desc}")
 
         choice = Prompt.ask(
-            "Select split method", choices=list(split_options.keys()), default="1"
+            "Select split method (b to go back, q to exit)",
+            choices=list(split_options.keys()) + ["b", "q"],
+            default="1",
         )
+        action = self.check_navigation(choice)
+        if action:
+            raise NavigationAction(action)
 
         if choice == "1":
             # Split into individual pages
             output_pattern = Prompt.ask(
                 "Output filename pattern (use %d for page number)",
-                default=f"page_%04d.pdf",
+                default="page_%04d.pdf",
             )
+            self.raise_if_navigation(output_pattern)
 
             command = f"pdftk '{self.current_pdf}' burst output '{output_pattern}'"
 
             # Use base class execute_command method
             success = self.execute_command(
                 command, 
-                success_message=f"PDF split into individual pages"
+                success_message="PDF split into individual pages"
             )
             
             # Remove the doc_data.txt file if command was successful
@@ -413,7 +457,12 @@ class PDFToolsUI(BaseUI):
 
             ranges = []
             while True:
-                range_input = Prompt.ask("Page range", default="")
+                range_input = Prompt.ask("Page range (or 'b' to go back, 'q' to exit)", default="")
+                action = self.check_navigation(range_input)
+                if action == "exit":
+                    raise NavigationAction("exit")
+                if action == "back":
+                    break
                 if not range_input:
                     break
                 ranges.append(range_input)

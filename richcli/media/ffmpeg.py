@@ -4,7 +4,7 @@ Simple terminal UI for ffmpeg operations using rich.
 
 import os
 import subprocess
-from typing import Dict, Tuple, Union, List, Optional
+from typing import Dict, Tuple, Union
 
 from rich import box
 from rich.panel import Panel
@@ -12,7 +12,7 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from rich.text import Text
 
-from ..cli.base import BaseUI
+from ..cli.base import BaseUI, NavigationAction
 
 
 class FFmpegUI(BaseUI):
@@ -72,6 +72,8 @@ class FFmpegUI(BaseUI):
         
         # Use file browser from base class
         self.input_file = self.browse_files(extensions=media_extensions)
+        if not self.input_file:
+            raise NavigationAction("back")
         return self.input_file
 
     def get_output_file(self, suggested_output: str) -> str:
@@ -79,6 +81,7 @@ class FFmpegUI(BaseUI):
         output_file = Prompt.ask(
             "[bold cyan]Enter output file path[/bold cyan]", default=suggested_output
         )
+        self.raise_if_navigation(output_file)
         self.output_file = output_file
         return output_file
 
@@ -110,17 +113,25 @@ class FFmpegUI(BaseUI):
         # Get user selection
         while True:
             try:
-                choice = int(
-                    Prompt.ask(
-                        "[bold cyan]Enter format number[/bold cyan]", default="1"
-                    )
+                raw_choice = Prompt.ask(
+                    "[bold cyan]Enter format number[/bold cyan] (b to go back, q to exit)",
+                    default="1",
                 )
+                action = self.check_navigation(raw_choice)
+                if action == "exit":
+                    raise NavigationAction("exit")
+                if action == "back":
+                    raise NavigationAction("back")
+
+                choice = int(raw_choice)
 
                 if 1 <= choice <= len(self.formats):
                     format_name = list(self.formats.keys())[choice - 1]
                     return self.formats[format_name]
                 else:
                     self.console.print("[bold red]Invalid choice![/bold red]")
+            except NavigationAction:
+                raise
             except ValueError:
                 self.console.print("[bold red]Please enter a number![/bold red]")
 
@@ -144,17 +155,25 @@ class FFmpegUI(BaseUI):
         # Get user selection
         while True:
             try:
-                choice = int(
-                    Prompt.ask(
-                        "[bold cyan]Enter resolution number[/bold cyan]", default="1"
-                    )
+                raw_choice = Prompt.ask(
+                    "[bold cyan]Enter resolution number[/bold cyan] (b to go back, q to exit)",
+                    default="1",
                 )
+                action = self.check_navigation(raw_choice)
+                if action == "exit":
+                    raise NavigationAction("exit")
+                if action == "back":
+                    raise NavigationAction("back")
+
+                choice = int(raw_choice)
 
                 if 1 <= choice <= len(self.resolutions):
                     resolution_name = list(self.resolutions.keys())[choice - 1]
                     return self.resolutions[resolution_name]
                 else:
                     self.console.print("[bold red]Invalid choice![/bold red]")
+            except NavigationAction:
+                raise
             except ValueError:
                 self.console.print("[bold red]Please enter a number![/bold red]")
 
@@ -167,11 +186,17 @@ class FFmpegUI(BaseUI):
         self.console.print("Leave empty to skip trimming.")
         self.console.print("Format: HH:MM:SS or SS.ms")
 
-        start_time = Prompt.ask("[bold cyan]Enter start time[/bold cyan]", default="")
+        start_time = Prompt.ask(
+            "[bold cyan]Enter start time[/bold cyan] (b to go back, q to exit)",
+            default="",
+        )
+        self.raise_if_navigation(start_time)
 
         end_time = Prompt.ask(
-            "[bold cyan]Enter end time[/bold cyan] (or duration)", default=""
+            "[bold cyan]Enter end time[/bold cyan] (or duration, b to go back, q to exit)",
+            default="",
         )
+        self.raise_if_navigation(end_time)
 
         return start_time, end_time
 
@@ -193,9 +218,14 @@ class FFmpegUI(BaseUI):
             # Volume adjustment
             while True:
                 volume = Prompt.ask(
-                    "[bold cyan]Volume adjustment[/bold cyan] (1.0 = original, 0.5 = half, 2.0 = double)",
+                    "[bold cyan]Volume adjustment[/bold cyan] (1.0 = original, 0.5 = half, 2.0 = double, b to go back, q to exit)",
                     default="1.0",
                 )
+                action = self.check_navigation(volume)
+                if action == "exit":
+                    raise NavigationAction("exit")
+                if action == "back":
+                    raise NavigationAction("back")
 
                 try:
                     options["volume"] = float(volume)
@@ -331,57 +361,63 @@ class FFmpegUI(BaseUI):
 
     def run(self) -> None:
         """Main application flow."""
-        self.clear_screen()
-        self.display_header("FFmpeg UI", "Terminal UI for media conversion")
+        try:
+            self.clear_screen()
+            self.display_header("FFmpeg UI", "Terminal UI for media conversion")
 
-        # Check if FFmpeg is installed
-        if subprocess.run(["which", "ffmpeg"], capture_output=True).returncode != 0:
-            self.console.print(
-                Panel.fit("[bold red]FFmpeg is not installed![/bold red]", box=box.ROUNDED)
-            )
-            self.console.print("[yellow]FFmpeg is required for this tool.[/yellow]")
-            self.console.print("On Ubuntu/Debian: [green]sudo apt install ffmpeg[/green]")
-            self.console.print("On macOS: [green]brew install ffmpeg[/green]")
-            self.console.print("On Windows: Download from https://ffmpeg.org/download.html")
-            return
+            # Check if FFmpeg is installed
+            if subprocess.run(["which", "ffmpeg"], capture_output=True).returncode != 0:
+                self.console.print(
+                    Panel.fit("[bold red]FFmpeg is not installed![/bold red]", box=box.ROUNDED)
+                )
+                self.console.print("[yellow]FFmpeg is required for this tool.[/yellow]")
+                self.console.print("On Ubuntu/Debian: [green]sudo apt install ffmpeg[/green]")
+                self.console.print("On macOS: [green]brew install ffmpeg[/green]")
+                self.console.print("On Windows: Download from https://ffmpeg.org/download.html")
+                return
 
-        # Get input file
-        self.input_file = self.get_input_file()
+            # Get input file
+            self.input_file = self.get_input_file()
 
-        # Suggest output file
-        basename, ext = os.path.splitext(self.input_file)
-        suggested_output = f"{basename}_converted{ext}"
-        self.output_file = self.get_output_file(suggested_output)
+            # Suggest output file
+            basename, ext = os.path.splitext(self.input_file)
+            suggested_output = f"{basename}_converted{ext}"
+            self.output_file = self.get_output_file(suggested_output)
 
-        # Get format conversion
-        format_options = self.get_format_conversion()
-        self.operations.append({"type": "format", **format_options})
+            # Get format conversion
+            format_options = self.get_format_conversion()
+            self.operations.append({"type": "format", **format_options})
 
-        # Get resolution if video output
-        if format_options["vcodec"] != "none":
-            resolution = self.get_resolution()
-            self.operations.append({"type": "resolution", "value": resolution})
+            # Get resolution if video output
+            if format_options["vcodec"] != "none":
+                resolution = self.get_resolution()
+                self.operations.append({"type": "resolution", "value": resolution})
 
-        # Get trim options
-        start_time, end_time = self.get_trim_options()
-        if start_time or end_time:
-            self.operations.append(
-                {"type": "trim", "start": start_time, "end": end_time}
-            )
+            # Get trim options
+            start_time, end_time = self.get_trim_options()
+            if start_time or end_time:
+                self.operations.append(
+                    {"type": "trim", "start": start_time, "end": end_time}
+                )
 
-        # Get audio options if format has audio
-        if format_options["acodec"] != "none":
-            audio_options = self.get_audio_options()
-            self.operations.append({"type": "audio", **audio_options})
+            # Get audio options if format has audio
+            if format_options["acodec"] != "none":
+                audio_options = self.get_audio_options()
+                self.operations.append({"type": "audio", **audio_options})
 
-        # Build command
-        self.command = self.build_command()
+            # Build command
+            self.command = self.build_command()
 
-        # Preview and confirm
-        if self.preview_command():
-            self.run_command()
-        else:
-            self.console.print("[yellow]Command canceled.[/yellow]")
+            # Preview and confirm
+            if self.preview_command():
+                self.run_command()
+            else:
+                self.console.print("[yellow]Command canceled.[/yellow]")
+        except NavigationAction as nav:
+            if nav.action == "exit":
+                self.console.print("[yellow]Exited FFmpeg UI.[/yellow]")
+            else:
+                self.console.print("[yellow]Returning to main menu.[/yellow]")
 
 
 def main():
@@ -390,7 +426,7 @@ def main():
         ui.run()
     except KeyboardInterrupt:
         ui.console.print("\nExiting FFmpeg UI. Goodbye!")
-    except Exception as e:
+    except Exception:
         import traceback
         traceback.print_exc()
 

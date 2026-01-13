@@ -3,16 +3,14 @@
 RichCLI main entry point
 """
 
-import os
 import sys
-from typing import List, Optional
 
 from rich import box
-from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
 from .cli.base import BaseUI
+from .cli.magnet import run_magnet
 from .media.ffmpeg import FFmpegUI
 from .media.pdf import PDFToolsUI
 
@@ -24,11 +22,16 @@ class MainUI(BaseUI):
         super().__init__()
         self.tools = {
             "1": (
+                "Magnet (Any CLI)",
+                "magnet",
+                "Parse --help/-h output and build commands interactively",
+            ),
+            "2": ("FFmpeg UI", FFmpegUI, "Convert media files with FFmpeg"),
+            "3": (
                 "PDF Tools",
                 PDFToolsUI,
                 "Manipulate PDF files with pdftk and ghostscript",
             ),
-            "2": ("FFmpeg UI", FFmpegUI, "Convert media files with FFmpeg"),
             "q": ("Quit", None, "Exit the application"),
         }
 
@@ -70,16 +73,37 @@ class MainUI(BaseUI):
             name, tool_class, _ = self.tools[choice]
 
             try:
-                tool = tool_class()
+                if tool_class == "magnet":
+                    command_name = Prompt.ask(
+                        "CLI to wrap",
+                        console=self.console,
+                        default="",
+                        show_default=False,
+                    ).strip()
 
-                if hasattr(tool, "main_menu"):
-                    tool.main_menu()
-                elif hasattr(tool, "run"):
-                    tool.run()
+                    action = self.check_navigation(command_name)
+                    if action == "exit":
+                        break
+                    if action == "back":
+                        continue
+
+                    if command_name:
+                        run_magnet(command_name)
+                    else:
+                        self.console.print(
+                            "[yellow]Please provide a command to wrap.[/yellow]"
+                        )
                 else:
-                    self.console.print(
-                        f"[red]Error: {name} does not have a run method.[/red]"
-                    )
+                    tool = tool_class()
+
+                    if hasattr(tool, "main_menu"):
+                        tool.main_menu()
+                    elif hasattr(tool, "run"):
+                        tool.run()
+                    else:
+                        self.console.print(
+                            f"[red]Error: {name} does not have a run method.[/red]"
+                        )
 
             except KeyboardInterrupt:
                 self.console.print(f"\n[yellow]Exiting {name}[/yellow]")
@@ -94,7 +118,8 @@ def main() -> None:
     """Main entry point for RichCLI."""
     # Handle command line arguments
     if len(sys.argv) > 1:
-        arg = sys.argv[1].lower()
+        raw_arg = sys.argv[1]
+        arg = raw_arg.lower()
 
         # Direct tool launch
         if arg == "pdf":
@@ -106,8 +131,6 @@ def main() -> None:
         elif arg == "magnet":
             # Check for additional arguments
             if len(sys.argv) > 2:
-                from .cli.magnet import run_magnet
-
                 command_name = sys.argv[2]
 
                 # Check if we have input from stdin
@@ -143,8 +166,16 @@ def main() -> None:
             print(f"RichCLI version {__version__}")
             return
         else:
-            print(f"Unknown command: {arg}")
-            print("Run 'richcli --help' for usage information")
+            # Fallback: treat any unknown command as a magnet target so users can jump straight in
+            help_text = None
+            if not sys.stdin.isatty():
+                help_text = sys.stdin.read()
+                try:
+                    sys.stdin = open("/dev/tty")
+                except:
+                    pass
+
+            run_magnet(raw_arg, help_text)
             return
 
     # Launch main UI
